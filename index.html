@@ -1,0 +1,109 @@
+<!--
+бібліотека - https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.11.0/dist/tf.min.js
+Дані - https://storage.googleapis.com/jmstore/TensorFlowJS/EdX/TrainingData/mnist.js
+-->
+<body>
+<h1 id="info">Getting data for training. Please wait...</h1>
+<progress value="0" max="100"></progress>
+<br />
+<canvas width="28" height="28"></canvas>
+<p id="prediction"></p>
+
+<style>
+  body {
+    margin: 10vh;
+  }
+  canvas {
+    position: relative;
+    margin: 8vh;
+    scale: 5;
+  }
+  progress {
+    width: 100%;
+    display: none;
+  }
+  p {
+    font-size: 20vh;
+    margin: 0;
+  }
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.11.0/dist/tf.min.js"></script>
+<script type="module">
+  // Отримання даних
+  import {TRAINING_DATA} from 'https://storage.googleapis.com/jmstore/TensorFlowJS/EdX/TrainingData/mnist.js';
+
+  let context = window.document.querySelector('canvas').getContext('2d');
+  let prediction = window.document.querySelector('#prediction');
+  let info = window.document.querySelector('#info');
+  let progress = window.document.querySelector('progress');
+
+  // Малювання зображення на основі числових даних
+  const drawImage = (digit) => {
+    let imageData = context.getImageData(0, 0, 28, 28);
+    for (let i = 0; i < digit.length; i++){
+      imageData.data[i * 4] = digit[i] * 255; // red
+      imageData.data[i * 4 + 1] = digit[i] * 255; // green
+      imageData.data[i * 4 + 2] = digit[i] * 255; // blue
+      imageData.data[i * 4 + 3] = 255;
+    }
+    context.putImageData(imageData, 0, 0);
+  };
+
+
+  // Створення стартових тензорів
+  const INPUT_TENSOR = tf.tensor2d(TRAINING_DATA.inputs);
+  const OUTPUT_TENSOR = tf.oneHot(tf.tensor1d(TRAINING_DATA.outputs, 'int32'), 10);
+
+  // Створення моделі
+  let model = tf.sequential();
+  model.add(tf.layers.dense({ inputShape: [784], units: 32 }));
+  model.add(tf.layers.dense({ units: 16 }));
+  model.add(tf.layers.dense({ units: 10, activation: 'softmax' }));
+
+  // Навчання моделі
+  const train = async () => {
+    model.compile({
+      optimizer: tf.train.adam(0.01),
+      loss: 'categoricalCrossentropy',
+      metrics: ['accuracy'],
+    });
+    info.innerText = 'Training model. Please wait...';
+    progress.style.display = 'block';
+    const EPOCHS = 50;
+    await model.fit(INPUT_TENSOR, OUTPUT_TENSOR, {
+      batchSize: 512,
+      epochs: EPOCHS,
+      shuffle: true,
+      callbacks: {onEpochEnd: (epoch, logs) => {
+          progress.value = epoch / (EPOCHS - 1) * 100;
+          console.log(`Epoch ${epoch} `, logs);
+        }},
+    });
+    info.innerText = 'Model succesfully trained';
+    progress.style.display = 'none';
+    // Удаление стартовых тензоров
+    INPUT_TENSOR.dispose();
+    OUTPUT_TENSOR.dispose();
+  }
+  await train();
+
+  // Тестування моделі (evaluate)
+  const tryToPredict = () => {
+    let randomIndex = Math.floor(Math.random() * TRAINING_DATA.inputs.length);
+    let result = tf.tidy(() => {
+      let newInput = tf.tensor1d(TRAINING_DATA.inputs[randomIndex]);
+      let output = model.predict(newInput.expandDims());
+      return output.squeeze().argMax();
+    });
+    result.array().then(number => {
+      prediction.innerText = number;
+      prediction.style.color = (number === TRAINING_DATA.outputs[randomIndex])
+        ? '#00ff00'  // green
+        : '#ff0000'; // red
+      drawImage(TRAINING_DATA.inputs[randomIndex]);
+    });
+  };
+  setInterval(() => tryToPredict(), 1000);
+</script>
+</body>
